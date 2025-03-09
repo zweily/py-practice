@@ -16,24 +16,46 @@ SHAPES = [
 WIDTH = 10
 HEIGHT = 20
 CELL_SIZE = 30  # 每个单元格的像素大小
+INFO_WIDTH = 6  # 右侧信息栏宽度(单位为方格)
 
 class Tetris:
+    # 添加类变量来记录历史最高分
+    best_score = 0
+    
     def __init__(self, root):
         self.root = root
-        # 增加画布高度以容纳分数显示区域
-        self.canvas = tk.Canvas(root, width=WIDTH * CELL_SIZE, height=HEIGHT * CELL_SIZE + 40, bg='black')
+        # 创建包含游戏区和信息区的画布
+        self.canvas = tk.Canvas(
+            root, 
+            width=(WIDTH + INFO_WIDTH) * CELL_SIZE,
+            height=HEIGHT * CELL_SIZE, 
+            bg='black'
+        )
         self.canvas.pack()
+        
         self.board = [[0] * WIDTH for _ in range(HEIGHT)]
+        self.next_shape = self.generate_shape()  # 预生成下一个形状
         self.current_shape = self.new_shape()
         self.current_x = WIDTH // 2 - len(self.current_shape[0]) // 2
         self.current_y = 0
         self.game_over = False
         self.score = 0
-        self.draw_board()
         
-        # 添加重新开始按钮
-        self.restart_button = tk.Button(root, text="Restart", command=self.restart_game)
-        self.restart_button.pack()
+        # 添加重新开始按钮到右侧信息栏
+        self.restart_button = tk.Button(
+            root, 
+            text="Restart", 
+            command=self.restart_game,
+            width=10,
+            height=2
+        )
+        # 使用窗口坐标来定位按钮
+        self.restart_button.place(
+            x=WIDTH * CELL_SIZE + INFO_WIDTH * CELL_SIZE // 2 - 45, 
+            y=HEIGHT * CELL_SIZE - 40
+        )
+        
+        self.draw_board()
 
     def drop(self):
         """让方块直接落到最底下"""
@@ -66,9 +88,16 @@ class Tetris:
             self.current_shape = (rotated_shape, self.current_shape[1])
             self.draw_board()
 
-    def new_shape(self):
+    def generate_shape(self):
+        """生成一个新形状"""
         shape, color = random.choice(SHAPES)
         return (shape, color)
+    
+    def new_shape(self):
+        """返回下一个形状并生成新的下一个形状"""
+        current = self.next_shape
+        self.next_shape = self.generate_shape()
+        return current
 
     def rotate_shape(self, shape):
         return [list(reversed(col)) for col in zip(*shape)]
@@ -91,10 +120,18 @@ class Tetris:
         lines_cleared = HEIGHT - len(new_board)
         self.board = [[0] * WIDTH for _ in range(lines_cleared)] + new_board
         self.score += lines_cleared * 100  # 每清除一行加100分
+        
+        # 更新最高分
+        if self.score > Tetris.best_score:
+            Tetris.best_score = self.score
+            
         return lines_cleared
 
     def update(self):
         if self.game_over:
+            # 游戏结束时检查是否需要更新最高分
+            if self.score > Tetris.best_score:
+                Tetris.best_score = self.score
             return  # 游戏结束时停止更新
         if self.valid_move(self.current_shape[0], self.current_x, self.current_y + 1):
             self.current_y += 1
@@ -112,51 +149,107 @@ class Tetris:
         if not self.game_over:
             self.root.after(500, self.update)
 
+    def draw_info_panel(self):
+        """绘制右侧信息面板"""
+        # 绘制信息区域背景
+        info_x = WIDTH * CELL_SIZE
+        self.canvas.create_rectangle(
+            info_x, 0, 
+            info_x + INFO_WIDTH * CELL_SIZE, HEIGHT * CELL_SIZE,
+            fill="black", outline="white"
+        )
+        
+        # 显示当前分数
+        self.canvas.create_text(
+            info_x + INFO_WIDTH * CELL_SIZE // 2, 50,
+            text="SCORE", fill="white", font=("Arial", 16, "bold")
+        )
+        self.canvas.create_text(
+            info_x + INFO_WIDTH * CELL_SIZE // 2, 80,
+            text=str(self.score), fill="white", font=("Arial", 24, "bold")
+        )
+        
+        # 显示最高分
+        self.canvas.create_text(
+            info_x + INFO_WIDTH * CELL_SIZE // 2, 110,
+            text="BEST SCORE", fill="white", font=("Arial", 14, "bold")
+        )
+        self.canvas.create_text(
+            info_x + INFO_WIDTH * CELL_SIZE // 2, 135,
+            text=str(Tetris.best_score), fill="gold", font=("Arial", 18, "bold")
+        )
+        
+        # 显示"NEXT"标题
+        self.canvas.create_text(
+            info_x + INFO_WIDTH * CELL_SIZE // 2, 180,
+            text="NEXT", fill="white", font=("Arial", 16, "bold")
+        )
+        
+        # 显示下一个方块预览
+        next_shape, next_color = self.next_shape
+        shape_width = len(next_shape[0])
+        shape_height = len(next_shape)
+        
+        # 计算预览区域的中心位置 - 稍微向下调整
+        preview_center_x = info_x + INFO_WIDTH * CELL_SIZE // 2
+        preview_center_y = 240
+        
+        # 计算方块左上角的位置
+        offset_x = preview_center_x - shape_width * CELL_SIZE // 2
+        offset_y = preview_center_y - shape_height * CELL_SIZE // 2
+        
+        for i, row in enumerate(next_shape):
+            for j, cell in enumerate(row):
+                if cell:
+                    self.canvas.create_rectangle(
+                        offset_x + j * CELL_SIZE, offset_y + i * CELL_SIZE,
+                        offset_x + (j + 1) * CELL_SIZE, offset_y + (i + 1) * CELL_SIZE,
+                        fill=next_color, outline="white"
+                    )
+        
+        # 如果游戏结束，显示GAME OVER文本 - 位于下一个方块预览区的下方
+        if self.game_over:
+            self.canvas.create_text(
+                info_x + INFO_WIDTH * CELL_SIZE // 2, 320,
+                text="GAME OVER", fill="red", font=("Arial", 20, "bold"), anchor="center"
+            )
+
     def draw_board(self):
         self.canvas.delete("all")
         
-        # 创建分数显示区域在游戏区域上方
-        self.canvas.create_rectangle(0, 0, WIDTH * CELL_SIZE, 40, fill="black", outline="white")
-        self.score_text = self.canvas.create_text(
-            WIDTH * CELL_SIZE // 2, 20, text=f"Score: {self.score}", 
-            fill="white", anchor="center", font=("Arial", 16, "bold")
-        )
+        # 绘制游戏区域边框
+        self.canvas.create_rectangle(0, 0, WIDTH * CELL_SIZE, HEIGHT * CELL_SIZE, outline="white")
         
-        # 绘制游戏区域边框 - 向下偏移40像素
-        game_top = 40  # 游戏区域顶部的Y坐标
-        self.canvas.create_rectangle(0, game_top, WIDTH * CELL_SIZE, game_top + HEIGHT * CELL_SIZE, outline="white")
-        
-        # 绘制已放置的方块 - 需要考虑偏移
+        # 绘制已放置的方块
         for y in range(HEIGHT):
             for x in range(WIDTH):
                 if self.board[y][x]:
                     self.canvas.create_rectangle(
-                        x * CELL_SIZE, y * CELL_SIZE + game_top,
-                        (x + 1) * CELL_SIZE, (y + 1) * CELL_SIZE + game_top,
+                        x * CELL_SIZE, y * CELL_SIZE,
+                        (x + 1) * CELL_SIZE, (y + 1) * CELL_SIZE,
                         fill=self.board[y][x], outline="white"
                     )
         
-        # 绘制当前移动的方块 - 需要考虑偏移
+        # 绘制当前移动的方块
         color = self.current_shape[1]
         for i, row in enumerate(self.current_shape[0]):
             for j, cell in enumerate(row):
                 if cell:
                     self.canvas.create_rectangle(
-                        (self.current_x + j) * CELL_SIZE, (self.current_y + i) * CELL_SIZE + game_top,
-                        (self.current_x + j + 1) * CELL_SIZE, (self.current_y + i + 1) * CELL_SIZE + game_top,
+                        (self.current_x + j) * CELL_SIZE, (self.current_y + i) * CELL_SIZE,
+                        (self.current_x + j + 1) * CELL_SIZE, (self.current_y + i + 1) * CELL_SIZE,
                         fill=color, outline="white"
                     )
-                    
-        # 如果游戏结束，显示Game Over文本
-        if self.game_over:
-            self.canvas.create_text(
-                WIDTH * CELL_SIZE / 2, game_top + HEIGHT * CELL_SIZE / 2,
-                text="Game Over", fill="red", font=("Arial", 36, "bold"), anchor="center"
-            )
+        
+        # 绘制右侧信息面板
+        self.draw_info_panel()
+        
+        # 移除原来游戏区域中间的Game Over文本，现在显示在右侧状态栏中
 
     def restart_game(self):
         """重新开始游戏"""
         self.board = [[0] * WIDTH for _ in range(HEIGHT)]
+        self.next_shape = self.generate_shape()  # 重新生成下一个形状
         self.current_shape = self.new_shape()
         self.current_x = WIDTH // 2 - len(self.current_shape[0]) // 2
         self.current_y = 0
